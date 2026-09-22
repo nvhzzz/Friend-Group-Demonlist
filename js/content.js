@@ -1,13 +1,16 @@
 import { round, score } from './score.js';
 
 /**
- * Data folder for GitHub Pages
+ * Path to the data folder
  */
-const dir = '/Friend-Group-Demonlist/data';
+const dir = '/Friend-Group-Demonlist/data/';
 
+/**
+ * Load the demon list
+ */
 export async function fetchList() {
     try {
-        const listResult = await fetch(`${dir}/_list.json`);
+        const listResult = await fetch(`${dir}_list.json`);
 
         if (!listResult.ok) {
             throw new Error(
@@ -21,7 +24,7 @@ export async function fetchList() {
             list.map(async (path, rank) => {
                 try {
                     const levelResult = await fetch(
-                        `${dir}/${path}.json`,
+                        `${dir}${path}.json`,
                     );
 
                     if (!levelResult.ok) {
@@ -36,6 +39,7 @@ export async function fetchList() {
                         {
                             ...level,
                             path,
+
                             records: (level.records ?? []).sort(
                                 (a, b) =>
                                     b.percent - a.percent,
@@ -54,15 +58,22 @@ export async function fetchList() {
             }),
         );
     } catch (error) {
-        console.error('Failed to load list.', error);
+        console.error(
+            'Failed to load list.',
+            error,
+        );
+
         return null;
     }
 }
 
+/**
+ * Load editors
+ */
 export async function fetchEditors() {
     try {
         const editorsResults = await fetch(
-            `${dir}/_editors.json`,
+            `${dir}_editors.json`,
         );
 
         if (!editorsResults.ok) {
@@ -75,8 +86,15 @@ export async function fetchEditors() {
     }
 }
 
+/**
+ * Calculate points
+ *
+ * If the level has a custom "points" value,
+ * use that instead of the normal score formula.
+ */
 function getLevelScore(level, rank, percent) {
-    // Use normal scoring if custom points aren't specified
+    // If there are no custom points,
+    // use the original score.js system.
     if (level.points == null) {
         return score(
             rank,
@@ -85,17 +103,17 @@ function getLevelScore(level, rank, percent) {
         );
     }
 
-    // Full completion
+    // 100% completion gets full points
     if (percent === 100) {
         return round(level.points);
     }
 
-    // Below minimum percentage
+    // No points below the qualifying percentage
     if (percent < level.percentToQualify) {
         return 0;
     }
 
-    // Partial progress
+    // Partial progress points
     const progress =
         (percent - (level.percentToQualify - 1)) /
         (100 - (level.percentToQualify - 1));
@@ -108,6 +126,9 @@ function getLevelScore(level, rank, percent) {
     );
 }
 
+/**
+ * Build leaderboard
+ */
 export async function fetchLeaderboard() {
     const list = await fetchList();
 
@@ -126,9 +147,11 @@ export async function fetchLeaderboard() {
 
         const levelRank = rank + 1;
 
-        // ----------------
-        // VERIFIER
-        // ----------------
+        /*
+         * -------------------------
+         * VERIFIER
+         * -------------------------
+         */
 
         const verifier =
             Object.keys(scoreMap).find(
@@ -145,18 +168,23 @@ export async function fetchLeaderboard() {
 
         scoreMap[verifier].verified.push({
             rank: levelRank,
+
             level: level.name,
+
             score: getLevelScore(
                 level,
                 levelRank,
                 100,
             ),
+
             link: level.verification,
         });
 
-        // ----------------
-        // VICTORS
-        // ----------------
+        /*
+         * -------------------------
+         * VICTORS / RECORDS
+         * -------------------------
+         */
 
         level.records.forEach((record) => {
             const user =
@@ -172,9 +200,13 @@ export async function fetchLeaderboard() {
                 progressed: [],
             };
 
+            /*
+             * 100% completion
+             */
             if (record.percent === 100) {
                 scoreMap[user].completed.push({
                     rank: levelRank,
+
                     level: level.name,
 
                     score: getLevelScore(
@@ -185,17 +217,27 @@ export async function fetchLeaderboard() {
 
                     link: record.link,
 
+                    /*
+                     * Marks this record as
+                     * the first victor.
+                     */
                     firstVictor:
-                        level.firstVictor?.toLowerCase() ===
+                        level.firstVictor
+                            ?.toLowerCase() ===
                         record.user.toLowerCase(),
                 });
 
                 return;
             }
 
+            /*
+             * Partial progress
+             */
             scoreMap[user].progressed.push({
                 rank: levelRank,
+
                 level: level.name,
+
                 percent: record.percent,
 
                 score: getLevelScore(
@@ -208,6 +250,12 @@ export async function fetchLeaderboard() {
             });
         });
     });
+
+    /*
+     * -------------------------
+     * CREATE PLAYER LEADERBOARD
+     * -------------------------
+     */
 
     const res = Object.entries(scoreMap).map(
         ([user, scores]) => {
@@ -231,16 +279,23 @@ export async function fetchLeaderboard() {
 
             return {
                 user,
+
                 total: round(total),
+
                 ...scores,
             };
         },
     );
 
+    /*
+     * Highest points first
+     */
     return [
         res.sort(
-            (a, b) => b.total - a.total,
+            (a, b) =>
+                b.total - a.total,
         ),
+
         errs,
     ];
 }
